@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+from gi.repository import Gtk, Gdk
+import subprocess as sp
+from functools import partial
+from threading import Thread
+from queue import Queue
+import signal, sys, os
+
+class LightThread (Thread):
+
+    def __init__ (self, queue):
+        self.queue = queue
+        super ().__init__ (daemon = True)
+
+    def run (self):
+        while 1:
+            brightness = self.queue.get ()
+            sp.call (["xbacklight", "-time", "1", "-steps", "1", "-set", str (brightness)])
+            self.queue.task_done ()
+
+def relay_event (to_widget, from_widget, event):
+    alloc = to_widget.get_allocation ()
+    event.x -= alloc.x
+    event.y -= alloc.y
+    event.x_root -= alloc.x
+    event.y_root -= alloc.y
+    to_widget.event (event)
+
+class Tray:
+
+    def __init__ (self):
+        self.queue = Queue ()
+        LightThread (self.queue).start ()
+
+        self.icon_names = os.listdir ('icons/')
+        self.icon_names.sort (key = lambda x: int (x.split ('-') [1] [:-4]))
+
+        self.icon = Gtk.StatusIcon.new ()
+        self.icon.connect ("popup-menu", self.popup)
+        self.icon.set_has_tooltip (True)
+
+        try:
+            dim = float (sp.check_output (["xbacklight", "-get"]))
+        except FileNotFoundError:
+            print ("xbacklight not installed, quitting.", file = sys.stderr)
+            sys.exit (1)
+
+        self.slider = Gtk.Scale (
+            orientation = Gtk.Orientation.VERTICAL,
+            adjustment  = Gtk.Adjustment (int (dim), 0, 100, 5, 10, 0)
+        )
+        self.slider.set_draw_value (False)
+        self.slider.set_has_origin (True)
+        self.slider.set_size_request (-1, 80)
+        self.slider.set_inverted (True)
+        self.slider.set_hexpand (True)
+        self.slider.set_vexpand (True)
+        self.slider.connect ("value-changed", self.dim)
+
+        self.update_icon ()
+
+        item = Gtk.MenuItem ()
+        item.add (self.slider)
+
+        # code to make the scale work inside a menu item, translated from
+        # http://git.xfce.org/xfce/xfce4-power-manager/tree/panel-plugins/power-manager-plugin/scalemenuitem.c
+        GEM = Gdk.EventMask
+        item.add_events (
+            GEM.POINTER_MOTION_MASK | GEM.SCROLL_MASK | GEM.BUTTON_MOTION_MASK
+        )
+        handler = partial (relay_event, self.slider)
+        item.connect ("button-press-event", handler)
+        item.connect ("motion-notify-event", handler)
+        item.connect ("button-release-event", handler)
+
+        self.menu = Gtk.Menu ()
+        self.menu.add (item)
+
+        self.step_size = 10
+        self.last_step = dim
+
+    def update_icon (self):
+        i = int (self.slider.get_value () / 101 * len (self.icon_names))
+        self.icon.set_from_file ("icons/" + self.icon_names [i])
+
+    def dim (self, slider, *_):
+        val  = slider.get_value ()
+        self.icon.set_tooltip_text ("Brightness: {}%".format (val))
+        if abs (val - self.last_step) < self.step_size:
+            return
+
+        self.last_step = val
+        self.queue.put (val)
+        self.update_icon ()
+
+    def popup (self, widget, button, time):
+        self.menu.show_all ()
+        self.menu.popup (None, None,
+            self.icon.position_menu,
+            self.icon, button, time
+        )
+
+    def main (self):
+        self.icon.set_visible (True)
+        Gtk.main ()
+
+    def quit (self, *_):
+        self.queue.join ()
+        Gtk.main_quit ()
+
+tray = Tray ()
+signal.signal (signal.SIGINT, tray.quit)
+tray.main ()

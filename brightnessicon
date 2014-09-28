@@ -32,7 +32,7 @@ class Tray:
         self.queue = Queue ()
         LightThread (self.queue).start ()
 
-        self.icon = Gtk.StatusIcon.new_from_file ("icons/brightness.svg")
+        self.icon = Gtk.StatusIcon.new_from_file ("/usr/share/brightnessicon/icon.svg")
         self.icon.connect ("popup-menu", self.popup)
         self.icon.set_has_tooltip (True)
 

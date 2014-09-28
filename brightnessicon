@@ -42,6 +42,8 @@ class Tray:
             print ("xbacklight not installed, quitting.", file = sys.stderr)
             sys.exit (1)
 
+        self.icon.set_tooltip_text ("Brightness: {}%".format (dim))
+
         self.slider = Gtk.Scale (
             orientation = Gtk.Orientation.VERTICAL,
             adjustment  = Gtk.Adjustment (int (dim), 0, 100, 5, 10, 0)

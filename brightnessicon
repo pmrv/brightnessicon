@@ -28,7 +28,7 @@ def relay_event (to_widget, from_widget, event):
 
 class Tray:
 
-    def __init__ (self):
+    def __init__ (self, orientation):
         self.queue = Queue ()
         LightThread (self.queue).start ()
 
@@ -45,16 +45,23 @@ class Tray:
         self.icon.set_tooltip_text ("Brightness: {}%".format (dim))
 
         self.slider = Gtk.Scale (
-            orientation = Gtk.Orientation.VERTICAL,
+            orientation = orientation,
             adjustment  = Gtk.Adjustment (int (dim), 0, 100, 5, 10, 0)
         )
+        self.slider.set_value (dim)
         self.slider.set_draw_value (False)
         self.slider.set_has_origin (True)
-        self.slider.set_size_request (-1, 80)
-        self.slider.set_inverted (True)
         self.slider.set_hexpand (True)
-        self.slider.set_vexpand (True)
+        self.slider.set_halign (Gtk.Align.START)
         self.slider.connect ("value-changed", self.dim)
+
+        size = [10, 80]
+        if   orientation == Gtk.Orientation.HORIZONTAL:
+            size.reverse ()
+            self.slider.set_size_request (*size)
+        elif orientation == Gtk.Orientation.VERTICAL:
+            self.slider.set_size_request (*size)
+            self.slider.set_inverted (True)
 
         item = Gtk.MenuItem ()
         item.add (self.slider)
@@ -100,6 +107,16 @@ class Tray:
         self.queue.join ()
         Gtk.main_quit ()
 
-tray = Tray ()
-signal.signal (signal.SIGINT, tray.quit)
+if len (sys.argv) < 2 or sys.argv [1] == "-h":
+    o = Gtk.Orientation.HORIZONTAL
+elif sys.argv [1] == "-v":
+    o = Gtk.Orientation.VERTICAL
+else:
+    print ("Usage: {} (-v|-h)\n"
+           "\t-v vertical orientation\n"
+           "\t-h horizontal orientation".format (sys.argv [0]))
+    sys.exit (1)
+
+signal.signal (signal.SIGINT, signal.SIG_DFL)
+tray = Tray (o)
 tray.main ()
